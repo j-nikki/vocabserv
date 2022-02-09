@@ -43,10 +43,9 @@ struct gc_res {
     return {};
 }
 
-constexpr std::string_view
-    nf1 = "<!DOCTYPE html<html><head><meta charset=utf-8><title>Error 404 (Not "
-          "Found)</title></head><body><p><b>404</b> Not Found.</p><p>The resource <i>",
-    nf2 = "</i> was not found.</p></body></html>";
+constexpr std::string_view nf1 = "<!DOCTYPE html><meta charset=utf-8><title>Error 404 (Not "
+                                 "Found)</title><p><b>404</b> Not Found.<p>The resource <i>",
+                           nf2 = "</i> was not found.";
 
 //! @brief Writes a response message serving a given request message
 //! @param rq Request message to serve

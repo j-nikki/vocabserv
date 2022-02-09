@@ -26,18 +26,18 @@ struct deferty {
 };
 } // namespace utils::impl
 
-#define UTILS_cat_exp(X, Y) X##Y
-#define CAT(X, Y) UTILS_cat_exp(X, Y)
+#define JUTIL_cat_exp(X, Y) X##Y
+#define CAT(X, Y) JUTIL_cat_exp(X, Y)
 #ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable : 5104)
 #endif
-#define UTILS_wstr_exp(X) L#X
+#define JUTIL_wstr_exp(X) L#X
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
 
-#define WSTRINGIFY(X) UTILS_wstr_exp(X)
+#define WSTRINGIFY(X) JUTIL_wstr_exp(X)
 #define DEFER const auto CAT(__defer_, __LINE__) = utils::impl::deferty{} =
 
 // The qualifiee *must* be inlined; not being so is an error

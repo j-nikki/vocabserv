@@ -18,13 +18,6 @@ function parseVocab(str) {
     return res;
 }
 
-function timeit(name, f, ...xs) {
-    console.time(name);
-    const res = f(...xs);
-    console.timeEnd(name);
-    return res;
-}
-
 let lst = [];
 let lsti = 0;
 let lstanch = null;

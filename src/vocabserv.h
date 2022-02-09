@@ -18,10 +18,10 @@ struct vocab {
             return false;
         DEFER[=] { fclose(file); };
         fseek(file, 0, SEEK_END);
-        nbuf = static_cast<std::size_t>(ftell(file));
+        const auto sz = static_cast<std::size_t>(ftell(file));
         fseek(file, 0, SEEK_SET);
-        buf = std::make_unique_for_overwrite<char[]>(nbuf);
-        fread(buf.get(), sizeof(char), nbuf, file);
+        buf  = std::make_unique_for_overwrite<char[]>(sz);
+        nbuf = static_cast<std::size_t>(fread(buf.get(), sizeof(char), sz, file));
         return true;
     }
     std::unique_ptr<char[]> buf;
