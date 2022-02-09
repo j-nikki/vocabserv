@@ -30,3 +30,9 @@
 *.exe
 *.out
 *.app
+
+# Local files
+own/
+out/
+build/
+.vs/
