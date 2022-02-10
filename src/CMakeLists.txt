@@ -3,7 +3,6 @@ cmake_minimum_required(VERSION 3.20)
 find_path(BOOST_ASIO_INCLUDE_DIRS "boost/asio.hpp")
 find_package(magic_enum CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
-
 find_package(Boost QUIET REQUIRED COMPONENTS thread system)
 
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/gen")

@@ -12,7 +12,7 @@ my definition for term 2
 
 ## Requirements
 * [vcpkg](https://vcpkg.io/en/index.html)
-* Modern C++ build toolds; tested on VS22 and GCC11
+* Modern C++ build tools; tested on VS22 and GCC11
 
 ## Building and running
 1. `vcpkg install boost-asio fmt spdlog magic-enum`

@@ -14,6 +14,8 @@
 struct string {
     const char *p;
     std::size_t n;
+    constexpr JUTIL_INLINE const char *begin() const noexcept { return p; }
+    constexpr JUTIL_INLINE const char *end() const noexcept { return p + n; }
     constexpr JUTIL_INLINE auto operator<=>(const string &rhs) const noexcept
     {
         return std::string_view{p, n} <=> rhs;

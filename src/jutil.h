@@ -590,3 +590,7 @@ constexpr inline auto iota = []<auto... xs>(std::integer_sequence<decltype(A + B
     S(S &&)      = delete;                                                                         \
     S &operator=(const S &) = delete;                                                              \
     S &operator=(S &&) = delete
+#define NO_DEF_CTORS(S)                                                                            \
+    S()          = delete;                                                                         \
+    S(const S &) = delete;                                                                         \
+    S(S &&)      = delete;

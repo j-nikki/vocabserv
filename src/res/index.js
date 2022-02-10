@@ -20,7 +20,6 @@ function parseVocab(str) {
 
 let lst = [];
 let lsti = 0;
-let lstanch = null;
 
 const obs = new IntersectionObserver(es => {
     const [e] = es;
@@ -53,9 +52,8 @@ function showlst(i = 0) {
         lst = !e.value ? [] : vocab.filter(([w, _]) => re.exec(w)).map(([w, d]) => `<tr><td>${w}<td><p>${d}`);
         showlst();
     });
-
 })().catch(e => {
     status.style.color = 'red';
-    status.innerText = `virhe ladattaessa sisältöä ${e}`;
+    status.innerText = `virhe ladattaessa sisältöä: ${e}`;
     throw e;
 });
