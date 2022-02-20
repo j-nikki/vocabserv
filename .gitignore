@@ -36,3 +36,4 @@ own/
 out/
 build/
 .vs/
+CMakeUserPresets.json

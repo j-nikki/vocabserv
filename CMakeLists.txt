@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
 
-project("vocabserv")
+project(vocabserv)
 
 add_subdirectory("src")

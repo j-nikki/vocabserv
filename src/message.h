@@ -7,12 +7,14 @@
 
 #include "jutil.h"
 
+#include "lmacro_begin.h"
+
 //
 // STRING
 //
 
 struct string {
-    const char *p;
+    char *p;
     std::size_t n;
     constexpr JUTIL_INLINE const char *begin() const noexcept { return p; }
     constexpr JUTIL_INLINE const char *end() const noexcept { return p + n; }
@@ -61,8 +63,7 @@ struct headers {
     //
     constexpr JUTIL_INLINE void clear() noexcept { n_ = 0; }
     void grow();
-    void reserve(const char *const kf, const char *const kl, const char *const vf,
-                 const char *const vl);
+    void reserve(char *const kf, char *const kl, char *const vf, char *const vl);
 
     //
     // KEY GET
@@ -114,3 +115,5 @@ struct message {
     headers hdrs;
     string body;
 };
+
+#include "lmacro_end.h"

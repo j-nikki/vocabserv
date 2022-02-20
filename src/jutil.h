@@ -8,6 +8,8 @@
 #include <span>
 #include <type_traits>
 
+#include "lmacro_begin.h"
+
 namespace sr = std::ranges;
 namespace sv = std::views;
 
@@ -43,8 +45,10 @@ struct deferty {
 // The qualifiee *must* be inlined; not being so is an error
 #ifdef _MSC_VER
 #define JUTIL_INLINE inline __forceinline
+#define JUTIL_NOINLINE __declspec(noinline)
 #else
 #define JUTIL_INLINE inline __attribute__((always_inline))
+#define JUTIL_NOINLINE __attribute__((noinline))
 #endif
 
 #ifndef NDEBUG
@@ -111,14 +115,7 @@ template <class F, class G>
 lty(F &&, G &&) -> lty<F, G>;
 }; // namespace utils::impl
 
-#define L(Expr, ...)                                                                               \
-    [__VA_ARGS__]([[maybe_unused]] const auto &x) -> decltype(Expr) { return Expr; }
-#define L2(Expr, ...)                                                                              \
-    [__VA_ARGS__]([[maybe_unused]] const auto &x,                                                  \
-                  [[maybe_unused]] const auto &y) -> decltype(Expr) { return Expr; }
-#define L0(Expr, ...) [__VA_ARGS__]() -> decltype(Expr) { return Expr; }
-
-#define MSK(X, M) (((X) & (M)) == (M))
+//#define MSK(X, M) (((X) & (M)) == (M))
 
 template <class, class, class...>
 struct curry;
@@ -594,3 +591,5 @@ constexpr inline auto iota = []<auto... xs>(std::integer_sequence<decltype(A + B
     S()          = delete;                                                                         \
     S(const S &) = delete;                                                                         \
     S(S &&)      = delete;
+
+#include "lmacro_end.h"

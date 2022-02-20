@@ -3,6 +3,8 @@
 #include <magic_enum.hpp>
 #include <string.h>
 
+#include "lmacro_begin.h"
+
 constexpr auto phdrws = L(x == ' ' || x == '\t');
 
 void headers::grow()
@@ -14,8 +16,7 @@ void headers::grow()
     cap_ = new_cap;
 }
 
-void headers::reserve(const char *const kf, const char *const kl, const char *const vf,
-                      const char *const vl)
+void headers::reserve(char *const kf, char *const kl, char *const vf, char *const vl)
 {
     if (n_ == cap_) [[unlikely]]
         grow();

@@ -5,10 +5,13 @@
 #include <stdlib.h>
 
 #include "buffer.h"
+#include "format.h"
 #include "jutil.h"
 #include "message.h"
 #include "vocabserv.h"
 #include <res.h>
+
+#include "lmacro_begin.h"
 
 #define KEEP_ALIVE_SECS 5
 
@@ -46,22 +49,32 @@ struct gc_res {
 }
 
 constexpr std::string_view nf1 = "<!DOCTYPE html><meta charset=utf-8><title>Error 404 (Not "
-                                 "Found)</title><p><b>404</b> Not Found.<p>The resource <i>",
-                           nf2 = "</i> was not found.";
+                                 "Found)</title><p><b>404</b> Not Found.<p>The resource <code>",
+                           nf2 = "</code> was not found.";
 
-char *escape(const char *f, const char *l, char *d_f) noexcept
+struct escaped {
+    escaped(const std::string_view sv) : f{sv.data()}, l{sv.data() + sv.size()} {}
+    constexpr JUTIL_INLINE std::size_t size() const noexcept
+    {
+        return static_cast<std::size_t>(l - f);
+    }
+    const char *const f, *const l;
+};
+
+template <class It>
+It escape(const char *f, const char *const l, It d_f) noexcept
 {
-    using namespace std::string_view_literals;
+#define ESC_copystr(S) std::copy_n(S, sizeof(S) - 1, d_f)
     for (; f != l; ++f) {
         switch (const char c = *f) {
         case '<':
-            d_f = sr::copy("&lt;"sv, d_f).out;
+            d_f = ESC_copystr("&lt;");
             break;
         case '>':
-            d_f = sr::copy("&gt;"sv, d_f).out;
+            d_f = ESC_copystr("&gt;");
             break;
         case '&':
-            d_f = sr::copy("&amp;"sv, d_f).out;
+            d_f = ESC_copystr("&amp;");
             break;
         default:
             *d_f++ = c;
@@ -69,10 +82,12 @@ char *escape(const char *f, const char *l, char *d_f) noexcept
     }
     return d_f;
 }
-JUTIL_INLINE char *escape(std::string_view sv, char *d_f) noexcept
-{
-    return escape(sv.data(), sv.data() + sv.size(), d_f);
-}
+
+template <>
+struct format::formatter<escaped> {
+    static char *format(char *d_f, const escaped &e) noexcept { return escape(e.f, e.l, d_f); }
+    static std::size_t maxsz(const escaped &e) noexcept { return e.size() * 5; }
+};
 
 //! @brief Writes a response message serving a given request message
 //! @param rq Request message to serve
@@ -86,29 +101,21 @@ void serve(const message &rq, buffer &rs)
 
     switch (rq.strt.mtd) {
     case method::GET: {
-        // No formatting time points on GCC ('22 Feb).
-        // const auto date = sc::time_point_cast<sc::seconds>(sc::utc_clock::now());
         if (const auto [cont, type, hdr] = get_content(rq.strt.tgt); !cont.empty()) {
-            rs.put("HTTP/1.1 200 OK\r\n"
-                   "connection: keep-alive\r\n"
-                   "content-type: {}; charset=UTF-8\r\n"
-                   //"date: {:%a, %d %b %Y %T GMT}\r\n"
-                   "content-length: {}\r\n"
-                   "{}"
-                   "keep-alive: timeout=" BOOST_STRINGIZE(KEEP_ALIVE_SECS) //
-                   "\r\n\r\n"
-                   "{}",
-                   type, /*date,*/ cont.size(), hdr, cont);
+            rs.put("HTTP/1.1 200 OK\r\nconnection: keep-alive\r\ncontent-type: ", type,
+                   "; charset=UTF-8\r\ndate: ", format::hdr_time{}, //
+                   "\r\ncontent-length: ", cont.size(),
+                   "\r\nkeep-alive: timeout=" BOOST_STRINGIZE(KEEP_ALIVE_SECS), //
+                   "\r\n", hdr,                                                 //
+                   "\r\n", cont);
         } else {
-            char buf[500];
-            const std::string_view bufv{buf, escape(rq.strt.tgt.sv().substr(0, 100), buf)};
+            const escaped res = rq.strt.tgt.sv().substr(0, 100);
             rs.put("HTTP/1.1 404 Not Found\r\n"
                    "content-type: text/html; charset=UTF-8\r\n"
-                   "content-length: {}\r\n"
-                   //"date: {:%a, %d %b %y %t gmt}\r\n"
-                   "\r\n"
-                   "{}{}{}",
-                   nf1.size() + nf2.size() + bufv.size(), /*date,*/ nf1, bufv, nf2);
+                   "content-length:",
+                   nf1.size() + nf2.size() + res.size(), //
+                   "\r\ndate: ", format::hdr_time{},     //
+                   "\r\n\r\n", nf1, res, nf2);
         }
         return;
     }
@@ -145,8 +152,8 @@ class connection : public std::enable_shared_from_this<connection>
     {
         if (ec) {
             if (ec != ba::error::eof)
-                g_log->error("{}: {}: {}\n", ec.category().name(), ec.value(),
-                             ec.message().c_str());
+                g_log.print(std::string_view{ec.category().name()}, ": ", ec.value(), ": ",
+                            std::string_view{ec.message()});
             return;
         }
         parse_header(rq_.data(), rq_.data() + (n - 4), msg_);

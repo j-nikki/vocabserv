@@ -1,15 +1,12 @@
 #pragma once
 
+#include <memory>
 #include <string>
 
-#ifdef _MSC_VER
-#include <format>
-#else
-#define DFMT_CONSTEVAL /* GCC fix */
-#include <fmt/format.h>
-#endif
-
+#include "format.h"
 #include "jutil.h"
+
+#include "lmacro_begin.h"
 
 struct buffer {
     static constexpr auto defcap = 4096_uz;
@@ -25,43 +22,35 @@ struct buffer {
     //
     constexpr JUTIL_INLINE void clear() noexcept { n_ = 0; }
     template <bool Copy>
-    void grow(std::size_t n)
-    {
-        const auto new_cap = std::bit_ceil(n);
-        auto new_mem       = std::make_unique_for_overwrite<char[]>(new_cap);
-        if constexpr (Copy)
-            std::copy_n(buf_.get(), n_, new_mem.get());
-        buf_.reset(new_mem.release());
-        cap_ = new_cap;
-    }
+    void grow(std::size_t n);
 
   private:
-    template <bool Append = false>
-    JUTIL_INLINE void Put(auto sz, auto fput)
+    template <bool Append = false, class... Args>
+    JUTIL_INLINE void Put(auto sz, auto fput, Args &&...args)
     {
-        const auto new_n = Append ? n_ + sz : sz;
+        const auto base  = Append ? n_ : 0;
+        const auto new_n = base + sz;
         if (new_n > cap_) [[unlikely]]
             grow<Append>(new_n);
-        fput(&buf_[Append ? n_ : 0]);
-        n_ = new_n;
+        n_ = static_cast<std::size_t>(fput(&buf_[base], static_cast<Args &&>(args)...) - &buf_[0]);
     }
 
   public:
-    JUTIL_INLINE void put(const std::string &str) { Put(str.size(), L(str.copy(x, str.size()), &)); }
-
-    template <bool Append = false, class Fmt, class... Args>
-    requires(!std::is_same_v<std::remove_cvref_t<Fmt>, std::string>) //
-        JUTIL_INLINE void put(Fmt &&fmt, Args &&...args)
+    template <bool Append = false, class... Args>
+    JUTIL_INLINE std::size_t put(Args &&...args)
     {
-#ifdef _MSC_VER
-        Put(std::formatted_size(fmt, args...), L((std::format_to(x, fmt, args...)), &));
-#else
-        // TODO: Remove. Sadly the fmtlib compiletime-errors on format_string construction, and only
-        // MS stdlib has fmt as of now ('22 Feb).
-        put(fmt::vformat(fmt, fmt::make_format_args(static_cast<Args &&>(args)...)));
-#endif
+        const auto sz = format::maxsz(static_cast<Args &&>(args)...);
+        Put(
+            sz,
+            [](char *s, Args &&...args) {
+                return format::format(s, static_cast<Args &&>(args)...);
+            },
+            static_cast<Args &&>(args)...);
+        return n_;
     }
 
     std::unique_ptr<char[]> buf_ = std::make_unique_for_overwrite<char[]>(defcap);
     std::size_t n_ = 0, cap_ = defcap;
 };
+
+#include "lmacro_end.h"
