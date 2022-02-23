@@ -18,15 +18,6 @@
 namespace sc = std::chrono;
 namespace ba = boost::asio;
 
-[[nodiscard]] JUTIL_INLINE std::string_view serve_api(std::string_view uri) noexcept
-{
-    if (uri == "vocabVer")
-        return "1";
-    if (uri == "vocab")
-        return {g_vocab.buf.get(), g_vocab.nbuf};
-    return {};
-}
-
 [[nodiscard]] constexpr JUTIL_INLINE std::string_view
 get_mimetype(const std::string_view uri) noexcept
 {
@@ -39,10 +30,19 @@ struct gc_res {
     std::string_view cont{}, type{}, hdr{};
 };
 
-[[nodiscard]] JUTIL_INLINE gc_res get_content(std::string_view uri) noexcept
+[[nodiscard]] JUTIL_INLINE gc_res serve_api(const std::string_view uri) noexcept
+{
+    if (uri == "vocabVer")
+        return {"1", "text/plain"};
+    if (uri == "vocab")
+        return {{g_vocab.buf.get(), g_vocab.nbuf}, "text/plain", "content-encoding: gzip\r\n"};
+    return {};
+}
+
+[[nodiscard]] JUTIL_INLINE gc_res get_content(const std::string_view uri) noexcept
 {
     if (uri.starts_with("/api/"))
-        return {serve_api(uri.substr(5)), "text/plain", ""};
+        return serve_api(uri.substr(5));
     if (const auto idx = find_unrl_idx(res::names, uri); idx < res::names.size())
         return {res::contents[idx], get_mimetype(uri), "content-encoding: gzip\r\n"};
     return {};

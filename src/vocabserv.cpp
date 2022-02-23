@@ -50,7 +50,7 @@ int main(int argc, char **argv)
 
 bool detail::vocab::init(const char *path)
 {
-    const auto file = fopen(path, "r");
+    const auto file = fopen(path, "rb");
     if (!file)
         return false;
     DEFER[=] { fclose(file); };
