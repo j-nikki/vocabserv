@@ -39,13 +39,9 @@ struct buffer {
     template <bool Append = false, class... Args>
     JUTIL_INLINE std::size_t put(Args &&...args)
     {
-        const auto sz = format::maxsz(static_cast<Args &&>(args)...);
+        const auto sz = format::maxsz(args...);
         Put(
-            sz,
-            [](char *s, Args &&...args) {
-                return format::format(s, static_cast<Args &&>(args)...);
-            },
-            static_cast<Args &&>(args)...);
+            sz, [](char *s, auto &&...args) { return format::format(s, args...); }, args...);
         return n_;
     }
 

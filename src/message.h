@@ -18,10 +18,24 @@ struct string {
     std::size_t n;
     constexpr JUTIL_INLINE const char *begin() const noexcept { return p; }
     constexpr JUTIL_INLINE const char *end() const noexcept { return p + n; }
-    constexpr JUTIL_INLINE auto operator<=>(const string &rhs) const noexcept
+    constexpr JUTIL_INLINE std::strong_ordering
+    operator<=>(const std::string_view rhs) const noexcept
     {
-        return std::string_view{p, n} <=> rhs;
+        return std::string_view{*this} <=> rhs;
     }
+    constexpr JUTIL_INLINE bool operator==(const std::string_view rhs) const noexcept
+    {
+        return std::is_eq(operator<=>(rhs));
+    }
+    constexpr JUTIL_INLINE std::strong_ordering operator<=>(const string rhs) const noexcept
+    {
+        return std::string_view{*this} <=> rhs;
+    }
+    constexpr JUTIL_INLINE bool operator==(const string rhs) const noexcept
+    {
+        return std::is_eq(operator<=>(rhs));
+    }
+    constexpr JUTIL_INLINE string substr(std::size_t m) const noexcept { return {p + m, n - m}; }
     constexpr JUTIL_INLINE operator std::string_view() const noexcept { return {p, n}; }
     constexpr JUTIL_INLINE std::string_view sv() const noexcept { return {p, n}; }
 };

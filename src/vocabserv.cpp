@@ -16,7 +16,7 @@ int main(int argc, char **argv)
 {
     try {
         if (argc < 2) {
-            fprintf(stderr, "usage: %s<vocab-path> [<port-num>] [<log-dir>]\n", argv[0]);
+            fprintf(stderr, "usage: %s <vocab-path> [<port-num>] [<log-dir>]\n", argv[0]);
             return 1;
         }
 

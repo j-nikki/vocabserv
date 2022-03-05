@@ -1,4 +1,7 @@
 ﻿#include <boost/asio.hpp>
+#include <boost/asio/experimental/as_tuple.hpp>
+#include <boost/asio/experimental/awaitable_operators.hpp>
+#include <boost/preprocessor/cat.hpp>
 #include <chrono>
 #include <memory>
 #include <stdio.h>
@@ -18,33 +21,52 @@
 namespace sc = std::chrono;
 namespace ba = boost::asio;
 
-[[nodiscard]] constexpr JUTIL_INLINE std::string_view
-get_mimetype(const std::string_view uri) noexcept
+[[nodiscard]] JUTIL_INLINE const std::string_view &get_mimetype(const std::string_view uri) noexcept
 {
-    constexpr std::string_view exts[]{".js", ".css"};
-    constexpr std::string_view types[]{"text/javascript", "text/css", "text/html"};
+    static constexpr std::string_view exts[]{".js", ".css"};
+    static constexpr std::string_view types[]{"text/javascript", "text/css", "text/html"};
     return types[find_if_unrl_idx(exts, L(uri.ends_with(x), =))];
 }
 
+#define STATIC_SV(X, ...)                                                                          \
+    [__VA_ARGS__]() -> const std::string_view & {                                                  \
+        static constexpr std::string_view BOOST_PP_CAT(x, __LINE__) = X;                           \
+        return BOOST_PP_CAT(x, __LINE__);                                                          \
+    }()
+
 struct gc_res {
-    std::string_view cont{}, type{}, hdr{};
+    const std::string_view &type = STATIC_SV(""), &hdr = STATIC_SV("");
 };
 
-[[nodiscard]] JUTIL_INLINE gc_res serve_api(const std::string_view uri) noexcept
+template <auto X>
+[[nodiscard]] JUTIL_INLINE constexpr auto &as_static() noexcept
 {
-    if (uri == "vocabVer")
-        return {"1", "text/plain"};
-    if (uri == "vocab")
-        return {{g_vocab.buf.get(), g_vocab.nbuf}, "text/plain", "content-encoding: gzip\r\n"};
+    return X;
+}
+
+[[nodiscard]] JUTIL_INLINE gc_res serve_api(const string &uri, buffer &body) noexcept
+{
+    using namespace std::string_view_literals;
+    if (uri == "vocabVer") {
+        body.put(std::string_view{"1"});
+        return {STATIC_SV("text/plain")};
+    }
+    if (uri == "vocab") {
+        body.put(std::string_view{g_vocab.buf.get(), g_vocab.nbuf});
+        return {STATIC_SV("text/plain"), STATIC_SV("content-encoding: gzip\r\n")};
+    }
     return {};
 }
 
-[[nodiscard]] JUTIL_INLINE gc_res get_content(const std::string_view uri) noexcept
+[[nodiscard]] JUTIL_INLINE gc_res get_content(const string &uri, buffer &body) noexcept
 {
-    if (uri.starts_with("/api/"))
-        return serve_api(uri.substr(5));
-    if (const auto idx = find_unrl_idx(res::names, uri); idx < res::names.size())
-        return {res::contents[idx], get_mimetype(uri), "content-encoding: gzip\r\n"};
+    using namespace std::string_view_literals;
+    if (uri.sv().starts_with("/api/"))
+        return serve_api(uri.substr(5), body);
+    if (const auto idx = find_unrl_idx(res::names, uri); idx < res::names.size()) {
+        body.put(res::contents[idx]);
+        return {get_mimetype(uri), STATIC_SV("content-encoding: gzip\r\n")};
+    }
     return {};
 }
 
@@ -92,7 +114,7 @@ struct format::formatter<escaped> {
 //! @brief Writes a response message serving a given request message
 //! @param rq Request message to serve
 //! @param rs Response message for given request
-void serve(const message &rq, buffer &rs)
+void serve(const message &rq, buffer &rs, buffer &body)
 {
     if (rq.strt.mtd == method::err)
         goto badreq;
@@ -101,13 +123,13 @@ void serve(const message &rq, buffer &rs)
 
     switch (rq.strt.mtd) {
     case method::GET: {
-        if (const auto [cont, type, hdr] = get_content(rq.strt.tgt); !cont.empty()) {
+        if (const auto [type, hdr] = get_content(rq.strt.tgt, body); !type.empty()) {
             rs.put("HTTP/1.1 200 OK\r\nconnection: keep-alive\r\ncontent-type: ", type,
                    "; charset=UTF-8\r\ndate: ", format::hdr_time{}, //
-                   "\r\ncontent-length: ", cont.size(),
+                   "\r\ncontent-length: ", body.size(),
                    "\r\nkeep-alive: timeout=" BOOST_STRINGIZE(KEEP_ALIVE_SECS), //
                    "\r\n", hdr,                                                 //
-                   "\r\n", cont);
+                   "\r\n", std::string_view{body.data(), body.size()});
         } else {
             const escaped res = rq.strt.tgt.sv().substr(0, 100);
             rs.put("HTTP/1.1 404 Not Found\r\n"
@@ -130,72 +152,71 @@ badver:
 
 DBGSTMNT(static int ncon = 0;)
 
-class connection : public std::enable_shared_from_this<connection>
+inline constexpr auto coro_hdlr = ba::experimental::as_tuple(ba::use_awaitable);
+ba::awaitable<void> handle_connection(ba::ip::tcp::socket soc_)
 {
-  public:
-    NO_DEF_CTORS(connection);
-    connection(ba::ip::tcp::socket &&soc) : soc_{std::move(soc)} {}
+    using namespace ba::experimental::awaitable_operators;
 
-    auto bound(auto f) { return std::bind_front(f, shared_from_this()); }
-    void on_write(boost::system::error_code ec, std::size_t)
-    {
-        soc_.shutdown(ba::ip::tcp::socket::shutdown_send, ec);
-        to_.cancel();
-        DBGEXPR(printf("con#%d: write end\n", id_));
-    }
-    void on_timeout(const boost::system::error_code &ec)
-    {
-        if (!ec)
-            DBGEXPR(printf("con#%d: timeout\n", id_)), soc_.close();
-    }
-    void on_read(const boost::system::error_code &ec, std::size_t n)
-    {
-        if (ec) {
-            if (ec != ba::error::eof)
-                g_log.print(std::string_view{ec.category().name()}, ": ", ec.value(), ": ",
-                            std::string_view{ec.message()});
-            return;
-        }
-        parse_header(rq_.data(), rq_.data() + (n - 4), msg_);
-        DBGEXPR(printf("vvv con#%d: received message with the header:\n", id_));
-        DBGEXPR(print_header(msg_));
-        DBGEXPR(printf("^^^\n"));
+    DBGEXPR(const int id_ = ncon++);
+    DBGEXPR(printf("con#%d: accepted\n", id_));
 
-        // determining message length (after CRLFCRLF):
-        // https://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.4
-        serve(msg_, rs_);
-        rq_.clear();
-        ba::async_write(soc_, ba::buffer(rs_.data(), rs_.size()), bound(&connection::on_write));
-    }
-    void start()
-    {
-        DBGEXPR(printf("con#%d: accepted\n", id_));
-        ba::async_read_until(soc_, ba::dynamic_buffer(rq_), "\r\n\r\n",
-                             bound(&connection::on_read));
-        to_.async_wait(bound(&connection::on_timeout));
-    }
-
-  private:
-    ba::ip::tcp::socket soc_;
+    // Read into buffer
     ba::steady_timer to_{soc_.get_executor(), sc::seconds(KEEP_ALIVE_SECS)};
-    message msg_;
     std::vector<char> rq_;
+    const auto res =
+        co_await(ba::async_read_until(soc_, ba::dynamic_buffer(rq_), "\r\n\r\n", coro_hdlr) ||
+                 to_.async_wait(coro_hdlr));
+    if (res.index() == 1)
+        co_return; // timeout
+
+    // Read request
+    const auto [rdec, rdn] = std::get<0>(res);
+    if (rdec) {
+        if (rdec != ba::error::eof)
+            g_log.print(std::string_view{rdec.category().name()}, ": ", rdec.value(), ": ",
+                        std::string_view{rdec.message()});
+        co_return;
+    }
+
+    // Handle request & build response
+    message msg_;
+    parse_header(rq_.data(), rq_.data() + (rdn - 4), msg_);
+    DBGEXPR(printf("vvv con#%d: received message with the header:\n", id_));
+    DBGEXPR(print_header(msg_));
+    DBGEXPR(printf("^^^\n"));
+    // determining message length (after CRLFCRLF):
+    // https://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.4
     buffer rs_;
-    DBGSTMNT(const int id_ = ncon++;)
-};
+    buffer rs_body_;
+    serve(msg_, rs_, rs_body_);
+    rq_.clear();
+
+    // Write response
+    const auto [wrec, _] =
+        co_await ba::async_write(soc_, ba::buffer(rs_.data(), rs_.size()), coro_hdlr);
+    if (wrec) {
+        g_log.print(std::string_view{wrec.category().name()}, ": ", wrec.value(), ": ",
+                    std::string_view{wrec.message()});
+        co_return;
+    }
+
+    DBGEXPR(printf("con#%d: write end\n", id_));
+}
+
+void accept_loop(auto &ioc, auto &ac, auto &soc)
+{
+    ac.async_accept(soc, [&](auto ec) {
+        if (!ec)
+            ba::co_spawn(ioc, handle_connection(std::move(soc)), ba::detached);
+        accept_loop(ioc, ac, soc);
+    });
+}
 
 void run_server(const ba::ip::tcp::endpoint &ep)
 {
     ba::io_context ioc{1};
     ba::ip::tcp::acceptor ac{ioc, ep};
     ba::ip::tcp::socket soc{ioc};
-    constexpr auto loop = [](auto loop, auto &ac, auto &soc) -> void {
-        ac.async_accept(soc, [&](auto ec) {
-            if (!ec)
-                std::make_shared<connection>(std::move(soc))->start();
-            loop(loop, ac, soc);
-        });
-    };
-    loop(loop, ac, soc);
+    accept_loop(ioc, ac, soc);
     ioc.run();
 }

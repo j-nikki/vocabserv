@@ -48,21 +48,37 @@ constexpr JUTIL_INLINE fmt_width_ty<N, T> fmt_width(T &&x) noexcept
         fmt_width<2>(H), ":", fmt_width<2>(M), ":", fmt_width<2>(S), " GMT"
 
 //
-// format
+// formatter
 //
 
 template <class T>
 struct formatter;
 
-namespace detail
-{
 // clang-format off
 template <class T>
-concept formatable = requires(char *d_f, const T &x) {
-    { format::formatter<T>::format(d_f, x) } noexcept -> std::same_as<char *>;
-    { format::formatter<T>::maxsz(x) } noexcept -> std::same_as<std::size_t>;
+concept custom_formatable = requires(char *d_f, const T &x) {
+    { format::formatter<std::remove_cvref_t<T>>::format(d_f, x) } noexcept -> std::same_as<char *>;
+    { format::formatter<std::remove_cvref_t<T>>::maxsz(x) } noexcept -> std::same_as<std::size_t>;
+};
+template <class T>
+concept lazyarg = requires(const T &x, const char *p) {
+    { x.size() } noexcept -> std::same_as<std::size_t>;
+    { x.write(p) } noexcept -> std::same_as<char *>;
 };
 // clang-format on
+
+template <lazyarg T>
+struct formatter<T> {
+    static char *format(const char *d_f, const T &x) noexcept { return x.write(d_f); }
+    static std::size_t maxsz(const T &x) noexcept { return x.size(); }
+};
+
+//
+// format
+//
+
+namespace detail
+{
 struct format_impl {
     static JUTIL_INLINE char *format(char *const d_f) noexcept { return d_f; }
 
@@ -161,10 +177,10 @@ struct format_impl {
     // user-provided formatting
     //
 
-    template <formatable T, class... Rest>
+    template <custom_formatable T, class... Rest>
     static JUTIL_INLINE char *format(char *const d_f, const T &x, Rest &&...rest) noexcept
     {
-        return format_impl::format(format::formatter<T>::format(d_f, x),
+        return format_impl::format(format::formatter<std::remove_cvref_t<T>>::format(d_f, x),
                                    static_cast<Rest &&>(rest)...);
     }
 };
@@ -236,10 +252,11 @@ struct maxsz_impl {
     // user-provided maxsz
     //
 
-    template <formatable T, class... Rest>
+    template <custom_formatable T, class... Rest>
     static constexpr JUTIL_INLINE std::size_t maxsz(const T &x, Rest &&...rest) noexcept
     {
-        return format::formatter<T>::maxsz(x) + maxsz_impl::maxsz(static_cast<Rest &&>(rest)...);
+        return format::formatter<std::remove_cvref_t<T>>::maxsz(x) +
+               maxsz_impl::maxsz(static_cast<Rest &&>(rest)...);
     }
 };
 } // namespace detail
@@ -248,4 +265,11 @@ template <class... Ts>
 {
     return detail::maxsz_impl::maxsz(static_cast<Ts &&>(xs)...);
 }
+
+// clang-format off
+template <class T>
+concept formatable = requires(char *d_f, const T &x) {
+    detail::format_impl::format(d_f, x);
+};
+// clang-format on
 } // namespace format
